@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Pizarra táctica: simulador para armar tu once ideal de fútbol, con presupuesto, formaciones y datos que se guardan en tu navegador.">
+  <meta name="author" content="Juanita Callejas Castro">
+  <meta name="keywords" content="JavaScript, localStorage, DOM, eventos, simulador, fútbol, Coderhouse">
+  <meta property="og:title" content="Pizarra táctica | Arma tu once ideal">
+  <meta property="og:description" content="Pre-entrega 8: sincronización de estado entre el DOM y localStorage.">
+  <meta property="og:type" content="website">
+  <title>Pizarra táctica | Arma tu once ideal</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚽</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    /* PIZARRA TÁCTICA - Estilos
+       Concepto: una pizarra de entrenador con cancha vertical,
+       fichas numeradas y un marcador de estadio arriba. */
+    :root {
+      --fondo: #08110c;
+      --panel: #101c15;
+      --panel-2: #16261c;
+      --linea: rgba(244, 241, 232, 0.14);
+      --tiza: #f4f1e8;
+      --tiza-suave: rgba(244, 241, 232, 0.68);
+      --amarillo: #ffd23f;
+      --verde: #3ddc84;
+      --rojo: #ff6b5b;
+      --por: #ffd23f;
+      --def: #5aa9ff;
+      --med: #4be08b;
+      --del: #ff7a59;
+      --radio: 14px;
+      --f-titulo: "Barlow Condensed", "Arial Narrow", Impact, sans-serif;
+      --f-texto: "Barlow", system-ui, -apple-system, "Segoe UI", sans-serif;
+      --ease: cubic-bezier(0.2, 0.7, 0.1, 1);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+
+    body {
+      margin: 0;
+      background:
+        radial-gradient(ellipse at 20% -10%, rgba(61, 220, 132, 0.12), transparent 50%),
+        var(--fondo);
+      color: var(--tiza);
+      font-family: var(--f-texto);
+      font-size: 1rem;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    h1, h2 { font-family: var(--f-titulo); font-weight: 700; line-height: 1; margin: 0; letter-spacing: 0.01em; }
+    h1 { font-size: clamp(2rem, 4vw, 3rem); }
+    h2 { font-size: 1.9rem; }
+    p { margin: 0; }
+    ul { list-style: none; margin: 0; padding: 0; }
+    button, input, select { font: inherit; color: inherit; }
+
+    :focus-visible { outline: 3px solid var(--amarillo); outline-offset: 2px; }
+
+    .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+    .salto { position: absolute; left: -999px; top: 0; background: var(--amarillo); color: #111; padding: 0.6rem 1rem; z-index: 100; }
+    .salto:focus { left: 0; }
+
+    /* ---------- Marcador (cabecera) ---------- */
+    .marcador {
+      display: grid; gap: 1rem 2rem; align-items: center;
+      padding: 1rem clamp(16px, 3vw, 40px);
+      background: linear-gradient(180deg, #0c1812, #08110c);
+      border-bottom: 1px solid var(--linea);
+    }
+    .marcador__nombre { font-family: var(--f-titulo); font-weight: 700; font-size: 1.1rem; color: var(--amarillo); letter-spacing: 0.06em; }
+    .equipo input {
+      width: 100%; max-width: 320px; background: transparent; border: 0; border-bottom: 1px dashed var(--linea);
+      font-family: var(--f-titulo); font-weight: 700; font-size: clamp(1.8rem, 3.4vw, 2.6rem); line-height: 1.1; padding: 0.1rem 0;
+    }
+    .equipo input:focus { border-bottom-color: var(--amarillo); outline: none; }
+
+    .datos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; margin: 0; }
+    .dato { background: var(--panel); border: 1px solid var(--linea); border-radius: 10px; padding: 0.55rem 0.9rem; }
+    .dato dt { font-size: 0.8rem; color: var(--tiza-suave); }
+    .dato dd { margin: 0; font-family: var(--f-titulo); font-weight: 700; font-size: 2rem; line-height: 1.05; color: var(--amarillo); }
+    .dato dd.dato__texto { font-size: 1.35rem; color: var(--tiza); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .barra { height: 6px; border-radius: 99px; background: rgba(255, 255, 255, 0.1); margin-top: 0.4rem; overflow: hidden; }
+    .barra > div { height: 100%; width: 0; background: var(--verde); border-radius: 99px; transition: width 0.6s var(--ease), background-color 0.3s; }
+    .barra > div.limite { background: var(--rojo); }
+    .guardado { font-size: 0.85rem; color: var(--tiza-suave); display: flex; align-items: center; gap: 0.5rem; }
+    .guardado::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--verde); flex: none; }
+    .guardado.sin-guardar::before { background: var(--tiza-suave); }
+
+    /* ---------- Estructura principal ---------- */
+    .mesa {
+      display: grid; gap: 1.5rem; padding: clamp(16px, 3vw, 40px);
+      grid-template-columns: 1fr;
+      grid-template-areas: "pizarra" "mercado" "once";
+      max-width: 1500px; margin: 0 auto;
+    }
+    .pizarra { grid-area: pizarra; }
+    .mercado { grid-area: mercado; }
+    .once { grid-area: once; }
+
+    .pizarra__cab { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; }
+    .formaciones { display: flex; gap: 0.5rem; }
+    .formacion {
+      background: var(--panel); border: 1px solid var(--linea); border-radius: 999px; padding: 0.5rem 1.1rem; cursor: pointer;
+      font-family: var(--f-titulo); font-weight: 600; font-size: 1.2rem; line-height: 1;
+      transition: background-color 0.25s, color 0.25s, border-color 0.25s;
+    }
+    .formacion:hover { border-color: var(--tiza-suave); }
+    .formacion[aria-pressed="true"] { background: var(--amarillo); border-color: var(--amarillo); color: #14120a; }
+
+    /* ---------- Cancha ---------- */
+    .cancha {
+      position: relative; width: min(100%, 560px); aspect-ratio: 3 / 4; margin-inline: auto; border-radius: var(--radio); overflow: hidden;
+      background:
+        repeating-linear-gradient(180deg, #17663a 0 10%, #14582f 10% 20%);
+      box-shadow: 0 0 0 4px #0c1812, 0 0 0 5px var(--linea), 0 30px 60px -30px rgba(0, 0, 0, 0.8);
+    }
+    .lineas .l { position: absolute; border: 2px solid rgba(244, 241, 232, 0.7); pointer-events: none; }
+    .l--borde { inset: 3%; border-radius: 4px; }
+    .l--medio { left: 3%; right: 3%; top: 50%; height: 0; border-width: 2px 0 0; }
+    .l--centro { left: 50%; top: 50%; width: 22%; aspect-ratio: 1; border-radius: 50%; transform: translate(-50%, -50%); }
+    .l--punto { left: 50%; top: 50%; width: 8px; height: 8px; border-radius: 50%; background: rgba(244, 241, 232, 0.8); transform: translate(-50%, -50%); }
+    .l--area { left: 50%; width: 52%; height: 16%; transform: translateX(-50%); }
+    .l--chica { left: 50%; width: 26%; height: 6.5%; transform: translateX(-50%); }
+    .l--area-sup { top: 3%; border-top: 0; }
+    .l--chica-sup { top: 3%; border-top: 0; }
+    .l--area-inf { bottom: 3%; border-bottom: 0; }
+    .l--chica-inf { bottom: 3%; border-bottom: 0; }
+
+    .cancha__jugadores { position: absolute; inset: 0; }
+
+    .ficha, .hueco {
+      position: absolute; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; gap: 4px;
+      width: auto;
+    }
+    .ficha__disco, .hueco__disco {
+      position: relative; width: clamp(38px, 9.5vw, 52px); aspect-ratio: 1; border-radius: 50%; display: grid; place-items: center;
+      font-family: var(--f-titulo); font-weight: 700; font-size: clamp(1.1rem, 3vw, 1.5rem); line-height: 1;
+    }
+    .ficha { animation: aparecer 0.4s var(--ease) both; }
+    .ficha__disco { background: var(--pos-color, var(--amarillo)); color: #101010; box-shadow: 0 6px 14px rgba(0, 0, 0, 0.45), inset 0 0 0 3px rgba(255, 255, 255, 0.35); }
+    .ficha__nombre {
+      background: rgba(8, 17, 12, 0.88); border-radius: 6px; padding: 1px 7px; font-size: 0.74rem; font-weight: 600; white-space: nowrap;
+      line-height: 1.35;
+    }
+    .ficha__capitan {
+      position: absolute; top: -6px; right: -6px; width: 20px; height: 20px; border-radius: 50%; background: #fff; color: #101010;
+      font-size: 0.75rem; font-weight: 700; display: grid; place-items: center; font-family: var(--f-texto); box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+    }
+    .hueco { background: none; border: 0; padding: 0; cursor: pointer; }
+    .hueco__disco { border: 2px dashed rgba(244, 241, 232, 0.65); color: rgba(244, 241, 232, 0.85); font-size: 1rem; transition: background-color 0.25s, transform 0.25s var(--ease); }
+    .hueco:hover .hueco__disco { background: rgba(244, 241, 232, 0.16); transform: scale(1.08); }
+    .hueco__texto { font-size: 0.7rem; color: rgba(244, 241, 232, 0.85); background: rgba(8, 17, 12, 0.6); border-radius: 6px; padding: 0 6px; }
+
+    .pos-POR { --pos-color: var(--por); }
+    .pos-DEF { --pos-color: var(--def); }
+    .pos-MED { --pos-color: var(--med); }
+    .pos-DEL { --pos-color: var(--del); }
+
+    @keyframes aparecer { from { opacity: 0; transform: translate(-50%, -50%) scale(0.5); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
+
+    /* ---------- Mercado ---------- */
+    .panel { background: var(--panel); border: 1px solid var(--linea); border-radius: var(--radio); padding: clamp(14px, 2vw, 24px); }
+    .mercado { display: flex; flex-direction: column; min-height: 0; }
+    .mercado h2 { margin-bottom: 1rem; }
+    .herramientas { display: grid; gap: 0.75rem; grid-template-columns: 1fr auto; margin-bottom: 0.75rem; }
+    .campo {
+      background: var(--panel-2); border: 1px solid var(--linea); border-radius: 10px; padding: 0.6rem 0.9rem; width: 100%;
+    }
+    .campo:focus { outline: none; border-color: var(--amarillo); }
+    .orden { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: var(--tiza-suave); }
+    .orden select { background: var(--panel-2); border: 1px solid var(--linea); border-radius: 10px; padding: 0.55rem 0.7rem; color: var(--tiza); }
+    .chips { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.75rem; }
+    .chip { background: transparent; border: 1px solid var(--linea); border-radius: 999px; padding: 0.35rem 0.9rem; cursor: pointer; font-weight: 500; font-size: 0.9rem; transition: background-color 0.25s, color 0.25s; }
+    .chip:hover { border-color: var(--tiza-suave); }
+    .chip[aria-pressed="true"] { background: var(--tiza); color: #10170f; border-color: var(--tiza); }
+    .contador { font-size: 0.85rem; color: var(--tiza-suave); margin-bottom: 0.5rem; }
+
+    .lista { display: grid; gap: 0.5rem; }
+    .lista--mercado { overflow-y: auto; padding-right: 4px; max-height: 70vh; }
+    .fila {
+      display: grid; grid-template-columns: 42px minmax(0, 1fr) auto auto auto; gap: 0.75rem; align-items: center;
+      background: var(--panel-2); border: 1px solid transparent; border-radius: 12px; padding: 0.6rem 0.8rem;
+      transition: border-color 0.25s, background-color 0.25s;
+    }
+    .fila:hover { border-color: var(--linea); }
+    .fila--activa { border-color: rgba(255, 210, 63, 0.45); background: rgba(255, 210, 63, 0.07); }
+    .dorsal {
+      width: 38px; aspect-ratio: 1; border-radius: 50%; display: grid; place-items: center; background: var(--pos-color, var(--amarillo)); color: #101010;
+      font-family: var(--f-titulo); font-weight: 700; font-size: 1.2rem; line-height: 1;
+    }
+    .fila__info { min-width: 0; display: flex; flex-direction: column; }
+    .fila__info strong { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .fila__meta { font-size: 0.82rem; color: var(--tiza-suave); }
+    .elite { margin-left: 0.5rem; font-size: 0.7rem; font-weight: 600; background: var(--amarillo); color: #14120a; border-radius: 99px; padding: 1px 7px; vertical-align: middle; }
+    .valor { font-family: var(--f-titulo); font-weight: 700; font-size: 1.7rem; line-height: 1; text-align: center; min-width: 2ch; }
+    .valor small { display: block; font-family: var(--f-texto); font-weight: 400; font-size: 0.65rem; color: var(--tiza-suave); }
+    .precio { font-weight: 600; font-size: 0.95rem; white-space: nowrap; min-width: 5.5ch; text-align: right; }
+
+    .btn {
+      border: 1px solid transparent; border-radius: 999px; padding: 0.5rem 1.1rem; font-weight: 600; font-size: 0.9rem; cursor: pointer; line-height: 1.2;
+      transition: background-color 0.25s, color 0.25s, transform 0.2s var(--ease), border-color 0.25s;
+    }
+    .btn:hover { transform: translateY(-1px); }
+    .btn--amarillo { background: var(--amarillo); color: #14120a; }
+    .btn--amarillo:hover { background: #ffe07a; }
+    .btn--linea { background: transparent; border-color: var(--linea); color: var(--tiza); }
+    .btn--linea:hover { border-color: var(--tiza-suave); }
+    .btn--peligro { background: var(--rojo); color: #1a0a08; }
+
+    .vacio { color: var(--tiza-suave); padding: 1rem 0.25rem; }
+
+    /* ---------- Tu 11 ---------- */
+    .once__cab { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.75rem; margin-bottom: 1rem; }
+    .acciones-datos { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+    .confirmacion {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; background: rgba(255, 107, 91, 0.1); border: 1px solid rgba(255, 107, 91, 0.45);
+      border-radius: 12px; padding: 0.75rem 1rem; margin-bottom: 1rem;
+    }
+    .confirmacion p { flex: 1 1 220px; }
+    .fila--once { grid-template-columns: 42px minmax(0, 1fr) auto auto auto auto; }
+    .btn-capitan { background: transparent; border: 1px solid var(--linea); color: var(--tiza); border-radius: 999px; width: 34px; height: 34px; cursor: pointer; font-weight: 700; transition: background-color 0.25s, color 0.25s; }
+    .btn-capitan[aria-pressed="true"] { background: #fff; color: #101010; border-color: #fff; }
+    .btn-capitan:hover { border-color: var(--tiza-suave); }
+
+    /* ---------- Mensajes ---------- */
+    .mensaje {
+      position: fixed; left: 50%; bottom: 20px; z-index: 90; transform: translate(-50%, 140%); max-width: min(92vw, 520px);
+      background: var(--tiza); color: #10170f; font-weight: 500; border-radius: 12px; padding: 0.8rem 1.2rem; box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+      transition: transform 0.45s var(--ease); border-left: 6px solid var(--verde);
+    }
+    .mensaje.visible { transform: translate(-50%, 0); }
+    .mensaje--error { border-left-color: var(--rojo); }
+    .mensaje--info { border-left-color: var(--def); }
+
+    /* ---------- Escritorio ---------- */
+    @media (min-width: 720px) {
+      .marcador { grid-template-columns: auto 1fr; }
+      .datos { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+      .guardado { grid-column: 1 / -1; }
+    }
+
+    @media (min-width: 1040px) {
+      .marcador { grid-template-columns: minmax(240px, 320px) 1fr auto; }
+      .guardado { grid-column: auto; }
+      .mesa {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 0.95fr);
+        grid-template-areas: "pizarra mercado" "once mercado";
+        align-items: start;
+      }
+      .mercado { position: sticky; top: 16px; max-height: calc(100vh - 32px); }
+      .lista--mercado { max-height: none; flex: 1; }
+    }
+
+    @media (max-width: 560px) {
+      .ficha__nombre { font-size: 0.66rem; padding: 0 5px; }
+      .fila { grid-template-columns: 38px minmax(0, 1fr) auto; row-gap: 0.4rem; }
+      .fila .precio { grid-column: 2; text-align: left; }
+      .fila .btn { grid-column: 3; grid-row: 1 / span 2; }
+      .fila--once { grid-template-columns: 38px minmax(0, 1fr) auto auto; }
+      .fila--once .precio { grid-column: 2; }
+      .fila--once .btn-capitan { grid-column: 3; grid-row: 1 / span 2; }
+      .fila--once .btn { grid-column: 4; grid-row: 1 / span 2; }
+      .herramientas { grid-template-columns: 1fr; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation: none !important; transition-duration: 0.01ms !important; }
+    }
+  </style>
+  <script src="./js/main.js" defer></script>
+</head>
+<body>
+  <a class="salto" href="#mesa">Saltar a la pizarra</a>
+
+  <!-- Marcador-->
+  <header class="marcador">
+    <div>
+      <p class="marcador__nombre">Pizarra táctica</p>
+      <label class="equipo">
+        <span class="sr">Nombre de tu equipo</span>
+        <input id="nombre-equipo" type="text" maxlength="28" value="Mi equipo" autocomplete="off">
+      </label>
+    </div>
+
+    <dl class="datos">
+      <div class="dato"><dt>Jugadores</dt><dd id="dato-jugadores">0/11</dd></div>
+      <div class="dato"><dt>Valoración media</dt><dd id="dato-media">--</dd></div>
+      <div class="dato">
+        <dt>Presupuesto disponible</dt>
+        <dd id="dato-presupuesto">€650 M</dd>
+        <div class="barra" aria-hidden="true"><div id="barra-presupuesto"></div></div>
+      </div>
+      <div class="dato"><dt>Capitán</dt><dd id="dato-capitan" class="dato__texto">Sin capitán</dd></div>
+    </dl>
+
+    <p class="guardado sin-guardar" id="dato-guardado" role="status">Aún sin guardar</p>
+  </header>
+
+  <main class="mesa" id="mesa">
+
+    <!-- Pizarra -->
+    <section class="pizarra" aria-labelledby="titulo-pizarra">
+      <div class="pizarra__cab">
+        <h1 id="titulo-pizarra">Arma tu once ideal</h1>
+        <div class="formaciones" role="group" aria-label="Formación">
+          <button class="formacion" type="button" data-formacion="4-3-3" aria-pressed="true">4-3-3</button>
+          <button class="formacion" type="button" data-formacion="4-4-2" aria-pressed="false">4-4-2</button>
+          <button class="formacion" type="button" data-formacion="3-5-2" aria-pressed="false">3-5-2</button>
+        </div>
+      </div>
+
+      <div class="cancha" id="cancha">
+        <div class="lineas" aria-hidden="true">
+          <i class="l l--borde"></i>
+          <i class="l l--medio"></i>
+          <i class="l l--centro"></i>
+          <i class="l l--punto"></i>
+          <i class="l l--area l--area-sup"></i>
+          <i class="l l--chica l--chica-sup"></i>
+          <i class="l l--area l--area-inf"></i>
+          <i class="l l--chica l--chica-inf"></i>
+        </div>
+        <div class="cancha__jugadores" id="jugadores-cancha"></div>
+      </div>
+    </section>
+
+    <!--  Mercado -->
+    <section class="mercado panel" aria-labelledby="titulo-mercado">
+      <h2 id="titulo-mercado">Mercado de fichajes</h2>
+
+      <div class="herramientas">
+        <label>
+          <span class="sr">Buscar jugador por nombre</span>
+          <input class="campo" id="buscador" type="search" placeholder="Buscar jugador" autocomplete="off">
+        </label>
+        <label class="orden">
+          <span>Ordenar por</span>
+          <select id="orden">
+            <option value="valoracion">Valoración</option>
+            <option value="precio">Precio</option>
+            <option value="nombre">Nombre</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="chips" role="group" aria-label="Filtrar por posición">
+        <button class="chip" type="button" data-filtro="TODOS" aria-pressed="true">Todos</button>
+        <button class="chip" type="button" data-filtro="POR" aria-pressed="false">Porteros</button>
+        <button class="chip" type="button" data-filtro="DEF" aria-pressed="false">Defensas</button>
+        <button class="chip" type="button" data-filtro="MED" aria-pressed="false">Mediocampistas</button>
+        <button class="chip" type="button" data-filtro="DEL" aria-pressed="false">Delanteros</button>
+      </div>
+
+      <p class="contador" id="contador" role="status"></p>
+      <ul class="lista lista--mercado" id="lista-mercado"></ul>
+    </section>
+
+    <!--  TU 11 -->
+    <section class="once panel" aria-labelledby="titulo-once">
+      <div class="once__cab">
+        <h2 id="titulo-once">Tu once</h2>
+        <div class="acciones-datos">
+          <button class="btn btn--linea" type="button" id="btn-vaciar">Vaciar plantilla</button>
+          <button class="btn btn--linea" type="button" id="btn-restablecer">Restablecer todo</button>
+        </div>
+      </div>
+
+      <div class="confirmacion" id="confirmacion" role="dialog" aria-labelledby="confirmacion-texto" hidden>
+        <p id="confirmacion-texto"></p>
+        <button class="btn btn--peligro" type="button" id="btn-confirmar">Sí, continuar</button>
+        <button class="btn btn--linea" type="button" id="btn-cancelar">Cancelar</button>
+      </div>
+
+      <ul class="lista" id="lista-once"></ul>
+      <p class="vacio" id="vacio-once">Aún no tienes jugadores. Ficha desde el mercado o toca un círculo vacío de la cancha.</p>
+    </section>
+  </main>
+
+  <!-- Mensajes para el usuario -->
+  <div class="mensaje" id="mensaje" role="status" aria-live="polite">
+    <span id="mensaje-texto"></span>
+  </div>
+</body>
+</html>
